@@ -1,0 +1,29 @@
+name: Validate Pull Request Title
+
+on:
+  pull_request:
+    types:
+      - opened
+
+jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validate PR Title
+      uses: tj-actions/verify-pull-request-title@v12
+      with:
+        regex: '^.*(\[+major]|\[+minor]|\[+patch]).*$'
+        case-insensitive: true
+    - name: Mark PR with Error
+      if: failure()
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.createComment({
+            issue_number: github.context.issue.number,
+            body: "El título del PR debe contener [+major], [+minor], o [+patch].",
+          })
+          github.rest.issues.update({
+            issue_number: github.context.issue.number,
+            state: 'closed',
+          })

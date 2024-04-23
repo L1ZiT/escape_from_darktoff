@@ -1,16 +1,42 @@
 name: Bump version
+
 on:
-  push:
-    branches:
-      - master
-      - main
+  pull_request:
+    types:
+      - closed
+
 jobs:
+  validate-pr-title:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validate PR Title
+      id: pr-title
+      uses: tj-actions/verify-pull-request-title@v12
+      with:
+        regex: '^.*(\+minor|\+major|\+patch).*$'
+        case-insensitive: true
+
   build:
+    needs: validate-pr-title
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@master
+    - name: Determine version bump type
+      id: version-bump
+      run: |
+        if echo "${{ github.event.pull_request.title }}" | grep -iq "\+major"; then
+          echo "::set-output name=version_type::major"
+        elif echo "${{ github.event.pull_request.title }}" | grep -iq "\+minor"; then
+          echo "::set-output name=version_type::minor"
+        elif echo "${{ github.event.pull_request.title }}" | grep -iq "\+patch"; then
+          echo "::set-output name=version_type::patch"
+        else
+          echo "No valid version bump indicator found in PR title."
+          exit 1
+
     - name: Bump version and push tag
       uses: anothrNick/github-tag-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO_OWNER: L1ZiT  # Reemplaza con el nombre correcto
+        DEFAULT_BUMP: ${{ steps.version-bump.outputs.version_type }}

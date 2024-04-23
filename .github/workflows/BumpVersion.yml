@@ -8,9 +8,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v3  # Actualizado a la versión más reciente
     - name: Bump version and push tag
-      uses: anothrNick/github-tag-action@master
+      uses: anothrNick/github-tag-action@1.40  # Utiliza una versión fija
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        REPO_OWNER: anothrNick
+        GITHUB_TOKEN: ${{ secrets.VERSION_BUMP }}
+        REPO_OWNER: L1ZiT  # Reemplaza con el nombre correcto
+

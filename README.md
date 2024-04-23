@@ -1,7 +1,7 @@
 # Escape from Darktoff
 Escape from Darktoff es un extraction shooter multijugador en primera persona. Aquí se explicará como contribuir al proyecto de manera ordenada y sencilla.
 ## Como contribuir
-Para contribuir al proyecto, tendrás que crear un nuevo branch, basado sobre el `main`, y este debe seguir la siguiente sintaxis:
+Para contribuir al proyecto, tendremos que crear un nuevo branch, basado sobre el `main`, y este debe seguir la siguiente sintaxis:
 
 `<nombre>/<tipo>/<descripcion>`
 

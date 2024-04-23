@@ -12,6 +12,5 @@ jobs:
     - name: Bump version and push tag
       uses: anothrNick/github-tag-action@master
       env:
-        GITHUB_TOKEN: ${{ secrets.VERSION_BUMP }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         REPO_OWNER: L1ZiT  # Reemplaza con el nombre correcto
-

@@ -1,0 +1,73 @@
+name: SemVer Auto-Tagging
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  semver_tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: Determine Version Increment
+        id: version_increment
+        run: |
+          branch_name="${{ github.head_ref }}"
+
+          if [[ $branch_name == *"feature"* ]]; then
+            increment_type="minor"
+          elif [[ $branch_name == *"patch"* || $branch_name == *"bugfix"* ]]; then
+            increment_type="patch"
+          else
+            increment_type="patch"  # Default to patch if the branch doesn't contain known keywords
+          fi
+
+          echo "::set-output name=increment_type::$increment_type"
+
+      - name: Get Current Version
+        id: get_version
+        run: |
+          # Obtén la última etiqueta con formato de versión SemVer
+          latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "::set-output name=current_version::$latest_tag"
+      - name: Generate New Version
+        id: new_version
+        run: |
+          current_version="${{ steps.get_version.outputs.current_version }}"
+          increment_type="${{ steps.version_increment.outputs.increment_type }}"
+
+          # Extrae las partes de la versión actual
+          major=$(echo $current_version | cut -d'.' -f1 | cut -d'v' -f2)
+          minor=$(echo $current_version | cut -d'.' -f2)
+          patch=$(echo $current_version | cut -d'.' -f3)
+
+          # Incrementa la versión según el tipo de incremento
+          if [[ $increment_type == "minor" ]]; then
+            minor=$((minor + 1))
+            patch=0  # Resetea el patch
+          elif [[ $increment_type == "patch" ]]; then
+            patch=$((patch + 1))
+          fi
+
+          new_version="v$major.$minor.$patch"
+          echo "::set-output name=new_version::$new_version"
+
+      - name: Create Tag with New Version
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            tag_name = '${{ steps.new_version.outputs.new_version }}'
+            context = github.context
+
+            # Verifica si la etiqueta ya existe para evitar errores
+            try:
+              repo = context.repo
+              ref = f"refs/tags/{tag_name}"
+              github.rest.git.get_ref(owner=repo.owner, repo=repo.repo, ref=ref)
+            except github.GithubException:
+              # Si la etiqueta no existe, crea la etiqueta para el pull request
+              github.rest.git.create_ref(owner=repo.owner, repo=repo.repo, ref=ref, sha=context.sha)
+            else:
+              print(f"Tag '{tag_name}' already exists")

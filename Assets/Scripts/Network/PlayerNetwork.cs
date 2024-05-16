@@ -1,47 +1,89 @@
-using System;
-using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using Unity.Netcode;
+using Unity.VisualScripting;
 using UnityEngine;
 
-public class PlayerNetwork : NetworkBehaviour
-{
-    [Header("Movement Settings")]
-    [SerializeField] private float movementSpeed = 3f;
-    
-    [Header("Camera Settings")]
-    [SerializeField] private Transform cameraPos;
-    [SerializeField] private float lookSensitivity = 3f;
-    [SerializeField] private float lookAngleLimit = 90f;
-    private GameObject playerCamera;
-    private float cameraVerticalAngle = 0f;
-    
-    private void Start() 
-    {
-        if (!IsLocalPlayer) { return; }
+public class PlayerNetwork : NetworkBehaviour {
 
-        playerCamera = GameObject.Find("PlayerCamera");
-        playerCamera.transform.SetParent(cameraPos);
-        playerCamera.transform.position = cameraPos.position;
-    }
-    
-    private void Update() 
+    [Header("Components")]
+    [SerializeField] private GameObject playerCamera;
+    [SerializeField] private Animator hitmarkerAnimator;
+
+
+    [Header("Movement Settings")]
+    [SerializeField] private float speed;
+    [SerializeField] private float lookSensitivity;
+    [SerializeField] private float lookAngleLimit;
+
+    [Header("Network Variables")]
+    [SerializeField] private NetworkVariable<int> health = new NetworkVariable<int>(5);
+
+    private float cameraVerticalAngle = 0f;
+    private bool inGame = false;
+    private NetworkManagerUI networkManagerUI;
+    private PlayerInfo myPlayerInfo;
+
+    public override void OnNetworkSpawn()
     {
-        if (!IsOwner) { return; }
+        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
+        string username = networkManagerUI.username;
+        int elo = networkManagerUI.elo;
+        PlayerInfo playerInfo = new PlayerInfo(username,elo);
+        //playerInfo.InitializePlayer();
+        //myPlayerInfo = playerInfo;
         
+        networkManagerUI.AddPlayerToLobby(playerInfo);
+        Debug.Log("Hello world I spawned, my id is: " + NetworkObjectId);
+        base.OnNetworkSpawn();
+    }
+
+    private void Start()
+    {
+        if (!IsLocalPlayer || !inGame) return;
+
+        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
+        playerCamera.SetActive(true);
+        hitmarkerAnimator = GameObject.Find("Hitmarker").GetComponent<Animator>();
+        GameObject.Find("MyId").GetComponent<TextMeshProUGUI>().text = $"{NetworkObjectId}";
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+    }
+
+    public void StartGame()
+    {
+        if(!IsLocalPlayer) return;
+
+        playerCamera.SetActive(true);
+        hitmarkerAnimator = GameObject.Find("Hitmarker").GetComponent<Animator>();
+        GameObject.Find("MyId").GetComponent<TextMeshProUGUI>().text = $"{NetworkObjectId}";
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+
+        inGame = true;
+    }
+
+    private void Update()
+    {
+        if (!IsOwner ||!inGame) return;
+
         HandleInput();
         Move();
         MoveCamera();
     }
     
-    public override void OnNetworkSpawn()
+    private void Move()
     {
-        Debug.Log("Hello world I spawned, my id is: " + NetworkObjectId);
-        base.OnNetworkSpawn();
+        var horizontal = Input.GetAxisRaw("Horizontal");
+        var vertical = Input.GetAxisRaw("Vertical");
+
+        Vector3 movementDirection =
+            (transform.forward * vertical + transform.right * horizontal).normalized * (speed * Time.deltaTime);
+
+        transform.position += movementDirection;
     }
-    
-    private void MoveCamera()
-    {
+
+    private void MoveCamera() {
         var mouseX = Input.GetAxis("Mouse X") * lookSensitivity;
         var mouseY = Input.GetAxis("Mouse Y") * lookSensitivity;
         
@@ -54,29 +96,50 @@ public class PlayerNetwork : NetworkBehaviour
         playerCamera.transform.localEulerAngles = new Vector3(cameraVerticalAngle, 0f, 0f);
     }
 
-    private void Move()
-    {
-        var horizontal = Input.GetAxisRaw("Horizontal");
-        var vertical = Input.GetAxisRaw("Vertical");
-        
-        Vector3 movementDirection = 
-            (transform.forward * vertical + transform.right * horizontal).normalized * (movementSpeed * Time.deltaTime);
-
-
-        transform.position += movementDirection;
-    }
-
     private void HandleInput()
     {
-        if (Input.GetKeyDown(KeyCode.Mouse0))
+        if (Input.GetMouseButtonDown(0))
         {
-            ShootServerRpc(NetworkObjectId);
+            ShootRpc(playerCamera.transform.position, playerCamera.transform.forward, NetworkObjectId);
         }
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void ShootServerRpc(ulong playerId)
+    // Shooting Mechanic
+
+    [Rpc(SendTo.Server, RequireOwnership = false)]
+    private void ShootRpc(Vector3 startPos, Vector3 dir, ulong shooterId)
     {
-        Debug.Log("Player " + playerId + " shoot");
+        RaycastHit hit;
+        Ray ray = new Ray(startPos, dir);
+
+        if (Physics.Raycast(ray, out hit))
+        {
+            if (!hit.transform.CompareTag("Player")) return;
+
+            TriggerHitmarkerRpc(shooterId);   
+            GotShootRpc(hit.transform.gameObject.GetComponent<PlayerNetwork>().NetworkObjectId);
+        }
+    }
+
+    [Rpc(SendTo.Everyone)]
+    private void TriggerHitmarkerRpc(ulong receiverId)
+    {
+        if (!IsOwner) return;
+        if (NetworkObjectId == receiverId)
+        {
+            hitmarkerAnimator.ResetTrigger("Hit");
+            hitmarkerAnimator.SetTrigger("Hit");
+        }
+        
+    }
+
+    [Rpc(SendTo.Everyone)]
+    private void GotShootRpc(ulong receiverId)
+    {
+        if (!IsOwner) return;
+        if(NetworkObjectId == receiverId)
+        {
+            Debug.Log("Got hit");
+        }
     }
 }

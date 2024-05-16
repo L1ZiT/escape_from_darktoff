@@ -11,12 +11,6 @@ public class HitmarkerController : MonoBehaviour
         animator = GetComponent<Animator>();
     }
 
-    public void Play()
-    {
-        animator.ResetTrigger("Hit");
-        animator.SetTrigger("Hit");
-    }
-
     public void Stop()
     {
         animator.ResetTrigger("Hit");

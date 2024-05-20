@@ -45,12 +45,17 @@ public class NetworkManagerUI : MonoBehaviour {
     [SerializeField] private GameObject mainMenu;
     [SerializeField] private GameObject ingameUIElements;
     [SerializeField] private Camera mainCamera;
-   
+
+    public TextMeshProUGUI healthText;
+    public TextMeshProUGUI ammoText;
+
     public UserData userData;
     private LobbyManager lobbyManager;
 
     private void Awake() {
 
+        healthText = GameObject.Find("Health").GetComponent<TextMeshProUGUI>();
+        ammoText = GameObject.Find("Ammo").GetComponent<TextMeshProUGUI>();
         lobbyManager = GameObject.Find("LobbyManager").GetComponent<LobbyManager>();
         userData = GameObject.Find("UserData").GetComponent<UserData>();
 

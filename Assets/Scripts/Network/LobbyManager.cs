@@ -291,7 +291,7 @@ public class LobbyManager : MonoBehaviour
 
     private async void SendHeartbeat()
     {
-        if(currentLobby != null)
+        if (currentLobby != null)
         {
             try
             {

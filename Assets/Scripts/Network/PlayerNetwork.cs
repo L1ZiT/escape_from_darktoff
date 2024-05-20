@@ -1,7 +1,5 @@
-using System.Collections.Generic;
 using TMPro;
 using Unity.Netcode;
-using Unity.VisualScripting;
 using UnityEngine;
 
 public class PlayerNetwork : NetworkBehaviour {
@@ -16,12 +14,14 @@ public class PlayerNetwork : NetworkBehaviour {
     [SerializeField] private float speed;
     [SerializeField] private float lookSensitivity;
     [SerializeField] private float lookAngleLimit;
+
     private float speedMultiplier = 0f;
     private bool isWalking;
     private bool isSprinting;
 
-    [Header("Network Variables")]
-    [SerializeField] private NetworkVariable<int> health = new NetworkVariable<int>(5);
+    public int health = 100;
+    public int ammo = 100;
+    private NetworkManagerUI networkManagerUI;
 
     private float cameraVerticalAngle = 0f;
 
@@ -35,7 +35,7 @@ public class PlayerNetwork : NetworkBehaviour {
     {
         if (!IsLocalPlayer) return;
 
-        playerCamera.SetActive(true);
+        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
         playerCamera.transform.Find("GunCamera").gameObject.SetActive(false);
         transform.Find("DummyGun").gameObject.SetActive(false);
         playerCamera.transform.Find("GunCamera").gameObject.SetActive(true);
@@ -90,6 +90,8 @@ public class PlayerNetwork : NetworkBehaviour {
     {
         if (Input.GetMouseButtonDown(0))
         {
+            ammo -= 1;
+            ammoText.text = ammo + "";
             miAnimator.ResetTrigger("Shoot");
             miAnimator.SetTrigger("Shoot");
             ShootRpc(playerCamera.transform.position, playerCamera.transform.forward, NetworkObjectId);
@@ -142,6 +144,8 @@ public class PlayerNetwork : NetworkBehaviour {
         if(NetworkObjectId == receiverId)
         {
             Debug.Log("Got hit");
+            health -= Random.Range(5, 12);
+            healthText.text = health + "";
         }
     }
 }

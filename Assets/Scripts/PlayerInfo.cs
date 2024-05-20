@@ -9,9 +9,9 @@ public class PlayerInfo : MonoBehaviour
     public TextMeshProUGUI eloText;
 
     public string username;
-    public int elo;
+    public string elo;
 
-    public PlayerInfo(string username, int elo)
+    public PlayerInfo(string username, string elo)
     {
         this.username = username;
         this.elo = elo;

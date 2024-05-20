@@ -22,8 +22,11 @@ public class NetworkManagerUI : MonoBehaviour {
     [Header("Menu Stages")]
     [SerializeField] private GameObject mainStage;
     [SerializeField] private GameObject playStage;
+    [SerializeField] private GameObject lobbyListStage;
     [SerializeField] private GameObject lobbyStage;
     [SerializeField] private GameObject settingsStage;
+    [SerializeField] private GameObject loginStage;
+    [SerializeField] private GameObject registerStage;
 
     [Header("Back Buttons")]
     [SerializeField] private Button testBackBtn;
@@ -32,6 +35,8 @@ public class NetworkManagerUI : MonoBehaviour {
 
     [Header("Play Buttons")]
     [SerializeField] private Button createLobbyBtn;
+    [SerializeField] private Button backBtn;
+    [SerializeField] private Button refreshBtn;
 
     [Header("Lobby Buttons")]
     [SerializeField] private Button leaveBtn;
@@ -40,23 +45,14 @@ public class NetworkManagerUI : MonoBehaviour {
     [SerializeField] private GameObject mainMenu;
     [SerializeField] private GameObject ingameUIElements;
     [SerializeField] private Camera mainCamera;
-
-    private List<PlayerInfo> lobbyPlayers;
-    private bool insideLobby = false;
-    private int lobbyPlayerCount = 0;
-
-    public TMP_InputField usernameText;
-    public TMP_InputField eloText;
-    public string username;
-    public int elo;
-
-    [SerializeField] private GameObject lobbyPlayerPrefab;
-    [SerializeField] private Transform lobbyListContentContainer;
+   
+    public UserData userData;
+    private LobbyManager lobbyManager;
 
     private void Awake() {
-        lobbyPlayers = new List<PlayerInfo>();
-        username = usernameText.textComponent.text;
-        elo = 400;
+
+        lobbyManager = GameObject.Find("LobbyManager").GetComponent<LobbyManager>();
+        userData = GameObject.Find("UserData").GetComponent<UserData>();
 
         // Testing Events
         /*serverBtn.onClick.AddListener((() => {
@@ -65,24 +61,22 @@ public class NetworkManagerUI : MonoBehaviour {
             mainCamera.gameObject.SetActive(false);
             NetworkManager.Singleton.StartServer();
         }));*/
-        hostBtn.onClick.AddListener((() => {
+        //hostBtn.onClick.AddListener((() => {
             //ingameUIElements.SetActive(true);
             //mainMenu.SetActive(false);
             //mainCamera.gameObject.SetActive(false);
-            NetworkManager.Singleton.StartHost();
-            playStage.SetActive(false);
-            lobbyStage.SetActive(true);
-            insideLobby = true;
-        }));
-        clientBtn.onClick.AddListener((() => {
+            //NetworkManager.Singleton.StartHost();
+            //playStage.SetActive(false);
+            //lobbyStage.SetActive(true);
+        //}));
+        //clientBtn.onClick.AddListener((() => {
             //ingameUIElements.SetActive(true);
             //mainMenu.SetActive(false);
             //mainCamera.gameObject.SetActive(false);
-            NetworkManager.Singleton.StartClient();
-            playStage.SetActive(false);
-            lobbyStage.SetActive(true);
-            insideLobby = true;
-        }));
+        //    NetworkManager.Singleton.StartClient();
+        //   playStage.SetActive(false);
+        //    lobbyStage.SetActive(true);
+        //}));
         /*disconnectBtn.onClick.AddListener((() => {
             if (NetworkManager.Singleton.IsHost) {
                 NetworkManager.Singleton.Shutdown();
@@ -100,7 +94,8 @@ public class NetworkManagerUI : MonoBehaviour {
         // Main menu events
         playBtn.onClick.AddListener((() => {
             mainStage.SetActive(false);
-            playStage.SetActive(true);
+            lobbyListStage.SetActive(true);
+            lobbyManager.ListLobbies();
         }));
         settingsBtn.onClick.AddListener((() => {
             mainStage.SetActive(false);
@@ -109,7 +104,28 @@ public class NetworkManagerUI : MonoBehaviour {
         quitBtn.onClick.AddListener((() => {
             Application.Quit();
         }));
-        
+
+        // Lobby List btn
+        backBtn.onClick.AddListener((() =>
+        {
+            mainStage.SetActive(true);
+            lobbyListStage.SetActive(false);
+        }));
+        refreshBtn.onClick.AddListener((() =>
+        {
+            lobbyManager.ListLobbies();
+        }));
+        createLobbyBtn.onClick.AddListener((() =>
+        {
+            lobbyManager.CreateLobby(userData.username + "'s game", 6);
+        }));
+
+        // Lobby btn
+        leaveBtn.onClick.AddListener((() =>
+        {
+            lobbyStage.SetActive(false);
+            lobbyListStage.SetActive(true);
+        }));
     }
 
     private void Update()
@@ -126,14 +142,40 @@ public class NetworkManagerUI : MonoBehaviour {
         }*/
     }
 
-    public void AddPlayerToLobby(PlayerInfo player)
+    public void EnterLobby()
     {
-        GameObject lobbyPlayerInstace = Instantiate(lobbyPlayerPrefab, lobbyListContentContainer);
-        lobbyPlayerInstace.GetComponent<PlayerInfo>().username = player.username;
-        lobbyPlayerInstace.GetComponent<PlayerInfo>().elo = player.elo;
-        lobbyPlayerInstace.GetComponent<PlayerInfo>().InitializePlayer();
-        lobbyPlayerInstace.transform.position += new Vector3(0, -60 * lobbyPlayerCount, 0);
-        lobbyPlayers.Add(player);
-        lobbyPlayerCount++;
+        lobbyListStage.SetActive(false);
+        lobbyStage.SetActive(true);
+    }
+
+    public void ChangeToLogin()
+    {
+        loginStage.SetActive(true);
+        registerStage.SetActive(false);
+    }
+
+    public void ChangeToRegister()
+    {
+        registerStage.SetActive(true);
+        loginStage.SetActive(false);
+    }
+
+    public void LoginSuccess()
+    {
+        loginStage.SetActive(false);
+        mainStage.SetActive(true);
+    }
+
+    public void RegisterSuccess()
+    {
+        registerStage.SetActive(false);
+        loginStage.SetActive(true);
+    }
+
+    public void StartGame()
+    {
+        ingameUIElements.SetActive(true);
+        mainMenu.SetActive(false);
+        mainCamera.gameObject.SetActive(false);
     }
 }

@@ -1,177 +1,79 @@
-using Unity.Netcode;
-using System;
 using System.Collections.Generic;
-using Unity.Services.Authentication;
 using Unity.Services.Core;
+using Unity.Services.Authentication;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
+using Unity.Networking.Transport.Relay;
+using Unity.Netcode.Transports.UTP;
 using QFSW.QC;
+using TMPro;
+using System.Linq;
+using System;
 
 public class LobbyManager : MonoBehaviour
 {
-    private Lobby hostLobby;
-    private Lobby joinedLobby;
-    private float heartbeatTimer;
-    private float checkLobbyStatusTimer;
-    public string username = "L1ZiT";
-    private int elo;
-    private List<Lobby> lobbyList;
+    public Button startGameBtn;
 
-    [SerializeField] private Button createLobbyBtn;
-    [SerializeField] private Button leaveLobbyBtn;
-    [SerializeField] private Button joinLobbyBtn;
+    private Lobby currentLobby;
+    private string playerId;
 
-    [Header("Prefabs")]
-    [SerializeField] private GameObject lobbyPrefab;
-    [SerializeField] private GameObject lobbyPlayerPrefab;
+    public GameObject lobbyPrefab;
+    public Transform lobbyListContainer;
+    public GameObject lobbyPlayerPrefab;
+    public Transform lobbyContainer;
 
-    [Header("Scroll View Containers")]
-    [SerializeField] private Transform lobbyListContentContainer;
-    [SerializeField] private Transform playerListContentContainer;
+    public TextMeshProUGUI lobbyPlayerCount;
+    private NetworkManagerUI networkManagerUI;
 
-    private void Awake()
+    private void Start()
     {
-        createLobbyBtn.onClick.AddListener(() =>
-        {
-            CreateLobby(username);
-        });
-        leaveLobbyBtn.onClick.AddListener(LeaveLobby);
+        InitializeUnityServices();
+        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
+        startGameBtn.onClick.AddListener(OnStartGameButtonClicked);
     }
 
-    private void Update()
-    {
-        HandleLobbyHeartbeat();
-        CheckLobbyStatus();
-    }
-
-    private async void HandleLobbyHeartbeat()
-    {
-        if(hostLobby != null)
-        {
-            heartbeatTimer -= Time.deltaTime;
-            if(heartbeatTimer < 0f)
-            {
-                float heartbeatTimerMax = 15f;
-                heartbeatTimer = heartbeatTimerMax;
-
-                await LobbyService.Instance.SendHeartbeatPingAsync(hostLobby.Id);
-            }
-        }
-    }
-
-    private async void CheckLobbyStatus()
-    {
-        if(joinedLobby != null)
-        {
-            checkLobbyStatusTimer -= Time.deltaTime;
-            if(checkLobbyStatusTimer < 0f)
-            {
-                float checkLobbyStatusTimerMax = 5f;
-                checkLobbyStatusTimer = checkLobbyStatusTimerMax;
-
-                try
-                {
-                    Lobby lobby = await LobbyService.Instance.GetLobbyAsync(joinedLobby.Id);
-                    bool playerInLobby = false;
-
-                    foreach(Player player in lobby.Players)
-                    {
-                        if(player.Id == AuthenticationService.Instance.PlayerId)
-                        {
-                            playerInLobby = true;
-                            break;
-                        }
-                    }
-
-                    if(!playerInLobby)
-                    {
-                        LobbyExited();
-                    }
-                } catch(LobbyServiceException ex)
-                {
-                    Debug.Log(ex);
-                    LobbyExited();
-                }
-            }
-        }
-    }
-
-    private async void Start()
+    private async void InitializeUnityServices()
     {
         await UnityServices.InitializeAsync();
-
-        AuthenticationService.Instance.SignedIn += () =>
-        {
-            Debug.Log("Signed in " + AuthenticationService.Instance.PlayerId);
-        };
         await AuthenticationService.Instance.SignInAnonymouslyAsync();
+
+        playerId = AuthenticationService.Instance.PlayerId;
     }
 
     [Command]
-    public async void CreateLobby(string userName)
+    public async void CreateLobby(string lobbyName, int maxPlayers)
     {
         try
         {
-            string lobbyName = userName + "'s game";
-            int maxPlayers = 6;
-
-            CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
+            CreateLobbyOptions options = new CreateLobbyOptions()
             {
-                IsPrivate = false,
                 Player = new Player
                 {
                     Data = new Dictionary<string, PlayerDataObject>
                     {
-                        { "PlayerName", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, userName) }
+                        { "Username", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, networkManagerUI.userData.username) },
+                        { "Elo", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, networkManagerUI.userData.elo.ToString()) }
                     }
                 }
             };
 
-            Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
+            currentLobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, options);
 
-            hostLobby = lobby;
-
-            Debug.Log("Created Lobby! " + lobby.Name + " " + lobby.MaxPlayers);
-            PrintPlayers(hostLobby);
-
-            // Start the game as host
-            NetworkManager.Singleton.StartHost();
-        } catch(LobbyServiceException ex)
+            Debug.Log($"Lobby created with ID: {currentLobby.Id}");
+            networkManagerUI.EnterLobby();
+            startGameBtn.gameObject.SetActive(true);
+            lobbyPlayerCount.text = $"{currentLobby.Players.Count}/6";
+            CheckLobbyData();
+            InvokeRepeating(nameof(CheckLobbyData), 2.0f, 2.0f);
+            InvokeRepeating(nameof(SendHeartbeat), 15.0f, 15.0f); // Heartbeat every 15 seconds
+        } catch(LobbyServiceException e)
         {
-            Debug.Log(ex);
-        }
-    }
-
-    [Command]
-    public async void ListLobbies()
-    {
-        for(int i = 0; i < lobbyListContentContainer.childCount; i++)
-        {
-            Destroy(lobbyListContentContainer.GetChild(i).gameObject);
-        }
-
-        try
-        {
-            QueryResponse queryResponse = await Lobbies.Instance.QueryLobbiesAsync();
-            Debug.Log("Lobbies found: " + queryResponse.Results.Count);
-            Debug.Log("Lobbies found: " + queryResponse.Results.Count);
-            int lobbyCount = 0;
-            foreach(Lobby lobby in queryResponse.Results)
-            {
-                GameObject lobbyInstance = Instantiate(lobbyPrefab, lobbyListContentContainer);
-                lobbyInstance.transform.position += new Vector3(0, -60 * lobbyCount, 0);
-                lobbyInstance.GetComponent<LobbyInfo>().InitializeLobby(lobby.Id, lobby.Name, lobby.Players.Count);
-                lobbyCount++;
-
-                // Add a button to join this lobby
-                Button joinButton = lobbyInstance.GetComponentInChildren<Button>();
-                joinButton.onClick.AddListener(() => JoinLobby(lobby.Id));
-            }
-        } catch(LobbyServiceException ex)
-        {
-            Debug.Log(ex);
+            Debug.Log(e);
         }
     }
 
@@ -179,59 +81,226 @@ public class LobbyManager : MonoBehaviour
     {
         try
         {
-            joinedLobby = await Lobbies.Instance.JoinLobbyByIdAsync(lobbyId);
+            JoinLobbyByIdOptions options = new JoinLobbyByIdOptions
+            {
+                Player = new Player
+                {
+                    Data = new Dictionary<string, PlayerDataObject>
+                    {
+                        { "Username", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, networkManagerUI.userData.username) },
+                        { "Elo", new PlayerDataObject(PlayerDataObject.VisibilityOptions.Member, networkManagerUI.userData.elo.ToString()) }
+                    }
+                }
+            };
 
-            Debug.Log("Joined Lobby! " + joinedLobby.Name);
-            PrintPlayers(joinedLobby);
-
-            // Connect as client
-            NetworkManager.Singleton.StartClient();
+            currentLobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, options);
+            Debug.Log($"Joined lobby with ID: {currentLobby.Id}");
+            networkManagerUI.EnterLobby();
+            CheckLobbyData();
+            InvokeRepeating(nameof(CheckLobbyData), 2.0f, 2.0f);
         } catch(LobbyServiceException e)
         {
-            Debug.Log(e);
+            Debug.LogError(e);
         }
     }
 
-    private void PrintPlayers(Lobby lobby)
+    public async void ExitLobby()
     {
-        foreach(Player player in lobby.Players)
+        if(currentLobby != null)
         {
-            Debug.Log(player.Id + " " + player.Data["PlayerName"].Value);
+            try
+            {
+                CancelInvoke(nameof(SendHeartbeat));
+                await LobbyService.Instance.RemovePlayerAsync(currentLobby.Id, playerId);
+                currentLobby = null;
+                Debug.Log("Exited lobby");
+                startGameBtn.gameObject.SetActive(false);
+            } catch(LobbyServiceException e)
+            {
+                Debug.LogError(e);
+            }
         }
     }
 
-    public async void LeaveLobby()
+    public async void ListLobbies()
     {
         try
         {
-            if(joinedLobby != null)
+            QueryLobbiesOptions options = new QueryLobbiesOptions();
+            options.Filters = new List<QueryFilter> {
+                new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT)
+            };
+
+            QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(options);
+
+            // Clear existing items
+            foreach(Transform child in lobbyListContainer)
             {
-                await LobbyService.Instance.RemovePlayerAsync(joinedLobby.Id, AuthenticationService.Instance.PlayerId);
-                LobbyExited();
-            } else if(hostLobby != null)
-            {
-                await LobbyService.Instance.DeleteLobbyAsync(hostLobby.Id);
-                LobbyExited();
+                Destroy(child.gameObject);
             }
-        } catch(LobbyServiceException ex)
+
+            // Add new items
+            int lobbyCount = 0;
+            foreach(var lobby in response.Results)
+            {
+                GameObject instantiatedlobbyPrefab = Instantiate(lobbyPrefab, lobbyListContainer);
+                instantiatedlobbyPrefab.transform.position += new Vector3(0, -60 * lobbyCount, 0);
+                LobbyInfo lobbyInfo = instantiatedlobbyPrefab.GetComponent<LobbyInfo>();
+                lobbyInfo.lobbyId = lobby.Id;
+                lobbyInfo.lobbyName = lobby.Name;
+                lobbyInfo.playerCount = lobby.Players.Count;
+                lobbyInfo.lobbyNameText.text = lobby.Name;
+                lobbyInfo.playerCountText.text = $"{lobby.Players.Count}/{lobby.MaxPlayers}";
+                lobbyCount++;
+            }
+
+        } catch(LobbyServiceException e)
         {
-            Debug.Log(ex);
+            Debug.LogError(e);
         }
     }
 
-    private void LobbyExited()
+    private async void CheckLobbyData()
     {
-        Debug.Log("You have exited the lobby.");
-        joinedLobby = null;
-        hostLobby = null;
-        NetworkManager.Singleton.Shutdown();
-        // Additional code to handle post-exit logic can be added here
+        if(currentLobby != null)
+        {
+            try
+            {
+                var updatedLobby = await LobbyService.Instance.GetLobbyAsync(currentLobby.Id);
+                if(updatedLobby.Data != null && updatedLobby.Data.ContainsKey("GameStarted") && updatedLobby.Data["GameStarted"].Value == "true")
+                {
+                    // Stop checking as we detected the game has started
+                    CancelInvoke(nameof(CheckLobbyData));
+
+                    if(updatedLobby.Data.ContainsKey("JoinCode"))
+                    {
+                        string joinCode = updatedLobby.Data["JoinCode"].Value;
+
+                        // Join the Relay allocation using the join code
+                        JoinAllocation joinAllocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+
+                        // Set up the Relay client data
+                        UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+                        transport.SetRelayServerData(
+                            joinAllocation.RelayServer.IpV4,
+                            (ushort)joinAllocation.RelayServer.Port,
+                            joinAllocation.AllocationIdBytes,
+                            joinAllocation.Key,
+                            joinAllocation.ConnectionData,
+                            joinAllocation.HostConnectionData
+                        );
+
+                        // Connect to the host
+                        NetworkManager.Singleton.StartClient();
+                        networkManagerUI.StartGame();
+                    }
+                }
+
+                // Update the player list UI
+                foreach(Transform child in lobbyContainer)
+                {
+                    Destroy(child.gameObject);
+                }
+
+                int playerCount = 0;
+
+                foreach(Player player in updatedLobby.Players)
+                {
+                    GameObject instLobbyPlayer = Instantiate(lobbyPlayerPrefab, lobbyContainer);
+                    instLobbyPlayer.GetComponent<PlayerInfo>().username = player.Data["Username"].Value;
+                    instLobbyPlayer.GetComponent<PlayerInfo>().elo = player.Data["Elo"].Value;
+                    instLobbyPlayer.GetComponent<PlayerInfo>().eloText.text = player.Data["Elo"].Value;
+                    instLobbyPlayer.GetComponent<PlayerInfo>().usernameText.text = player.Data["Username"].Value;
+                    instLobbyPlayer.transform.position += new Vector3(0, -60 * playerCount, 0);
+                    playerCount++;
+                }
+
+                lobbyPlayerCount.text = $"{currentLobby.Players.Count}/6";
+            } catch(LobbyServiceException e)
+            {
+                Debug.LogError(e);
+            }
+        }
     }
 
-    [Command]
-    private void ChangeUsername(string username, int elo)
+    private async void OnStartGameButtonClicked()
     {
-        this.username = username;
-        this.elo = elo;
+        if(currentLobby != null)
+        {
+            try
+            {
+                // Create a Relay allocation for the host
+                Allocation allocation = await RelayService.Instance.CreateAllocationAsync(4); // 4 is the max number of players
+                string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+
+                // Update lobby data to indicate game start and include the join code
+                var lobbyData = new Dictionary<string, DataObject>
+                {
+                    { "GameStarted", new DataObject(DataObject.VisibilityOptions.Member, "true") },
+                    { "JoinCode", new DataObject(DataObject.VisibilityOptions.Member, joinCode) }
+                };
+                await LobbyService.Instance.UpdateLobbyAsync(currentLobby.Id, new UpdateLobbyOptions { Data = lobbyData });
+
+                // Set up the Relay server data for the host
+                UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
+                transport.SetRelayServerData(
+                    allocation.RelayServer.IpV4,
+                    (ushort)allocation.RelayServer.Port,
+                    allocation.AllocationIdBytes,
+                    allocation.Key,
+                    allocation.ConnectionData
+                );
+
+                CancelInvoke(nameof(CheckLobbyData));
+                CancelInvoke(nameof(SendHeartbeat));
+
+                // Start the host
+                NetworkManager.Singleton.StartHost();
+                networkManagerUI.StartGame();
+            } catch(RelayServiceException e)
+            {
+                Debug.LogError(e);
+            }
+        }
+    }
+
+    private async void CheckHostDisconnection()
+    {
+        if(currentLobby != null)
+        {
+            try
+            {
+                var updatedLobby = await LobbyService.Instance.GetLobbyAsync(currentLobby.Id);
+                if(updatedLobby.HostId == null)
+                {
+                    Debug.Log("Host has disconnected, removing all players.");
+
+                    foreach(var player in currentLobby.Players)
+                    {
+                        await LobbyService.Instance.RemovePlayerAsync(currentLobby.Id, player.Id);
+                    }
+
+                    currentLobby = null;
+                }
+            } catch(LobbyServiceException e)
+            {
+                Debug.LogError(e);
+            }
+        }
+    }
+
+    private async void SendHeartbeat()
+    {
+        if(currentLobby != null)
+        {
+            try
+            {
+                await LobbyService.Instance.SendHeartbeatPingAsync(currentLobby.Id);
+                Debug.Log("Heartbeat sent to keep the lobby alive.");
+            } catch(LobbyServiceException e)
+            {
+                Debug.LogError(e);
+            }
+        }
     }
 }

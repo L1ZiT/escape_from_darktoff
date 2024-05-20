@@ -493,9 +493,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4db1be14455ef8a4c9614e323b8f02cd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  lobbyPrefab: {fileID: 0}
+  lobbyId: 
+  playerCount: 0
+  lobbyName: 
   lobbyNameText: {fileID: 8924320757109372464}
   playerCountText: {fileID: 6585924653851517547}
+  JoinBtn: {fileID: 225587281197778054}
 --- !u!1 &8889273724770533708
 GameObject:
   m_ObjectHideFlags: 0

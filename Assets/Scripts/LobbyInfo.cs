@@ -12,16 +12,13 @@ public class LobbyInfo : MonoBehaviour
 
     public TextMeshProUGUI lobbyNameText;
     public TextMeshProUGUI playerCountText;
+    public Button JoinBtn;
 
-    public Button joinButton;
-
-    public void InitializeLobby(string id, string name, int players)
+    public void Awake()
     {
-        lobbyName = name;
-        lobbyId = id;
-        playerCount = players;
-
-        lobbyNameText.text = lobbyName;
-        playerCountText.text = playerCount + "/6";
+        JoinBtn.onClick.AddListener(() =>
+        {
+            GameObject.Find("LobbyManager").GetComponent<LobbyManager>().JoinLobby(lobbyId);
+        });
     }
 }

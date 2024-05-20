@@ -9,63 +9,46 @@ public class PlayerNetwork : NetworkBehaviour {
     [Header("Components")]
     [SerializeField] private GameObject playerCamera;
     [SerializeField] private Animator hitmarkerAnimator;
+    private Animator miAnimator;
 
 
     [Header("Movement Settings")]
     [SerializeField] private float speed;
     [SerializeField] private float lookSensitivity;
     [SerializeField] private float lookAngleLimit;
+    private float speedMultiplier = 0f;
+    private bool isWalking;
+    private bool isSprinting;
 
     [Header("Network Variables")]
     [SerializeField] private NetworkVariable<int> health = new NetworkVariable<int>(5);
 
     private float cameraVerticalAngle = 0f;
-    private bool inGame = false;
-    private NetworkManagerUI networkManagerUI;
-    private PlayerInfo myPlayerInfo;
 
     public override void OnNetworkSpawn()
     {
-        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
-        string username = networkManagerUI.username;
-        int elo = networkManagerUI.elo;
-        PlayerInfo playerInfo = new PlayerInfo(username,elo);
-        //playerInfo.InitializePlayer();
-        //myPlayerInfo = playerInfo;
-        
-        networkManagerUI.AddPlayerToLobby(playerInfo);
         Debug.Log("Hello world I spawned, my id is: " + NetworkObjectId);
         base.OnNetworkSpawn();
     }
 
     private void Start()
     {
-        if (!IsLocalPlayer || !inGame) return;
-
-        networkManagerUI = GameObject.Find("NetworkManagerUI").GetComponent<NetworkManagerUI>();
-        playerCamera.SetActive(true);
-        hitmarkerAnimator = GameObject.Find("Hitmarker").GetComponent<Animator>();
-        GameObject.Find("MyId").GetComponent<TextMeshProUGUI>().text = $"{NetworkObjectId}";
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
-    }
-
-    public void StartGame()
-    {
-        if(!IsLocalPlayer) return;
+        if (!IsLocalPlayer) return;
 
         playerCamera.SetActive(true);
+        playerCamera.transform.Find("GunCamera").gameObject.SetActive(false);
+        transform.Find("DummyGun").gameObject.SetActive(false);
+        playerCamera.transform.Find("GunCamera").gameObject.SetActive(true);
+        miAnimator = GetComponent<Animator>();
         hitmarkerAnimator = GameObject.Find("Hitmarker").GetComponent<Animator>();
-        GameObject.Find("MyId").GetComponent<TextMeshProUGUI>().text = $"{NetworkObjectId}";
+        //GameObject.Find("MyId").GetComponent<TextMeshProUGUI>().text = $"{NetworkObjectId}";
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
-
-        inGame = true;
     }
 
     private void Update()
     {
-        if (!IsOwner ||!inGame) return;
+        if (!IsOwner) return;
 
         HandleInput();
         Move();
@@ -77,8 +60,15 @@ public class PlayerNetwork : NetworkBehaviour {
         var horizontal = Input.GetAxisRaw("Horizontal");
         var vertical = Input.GetAxisRaw("Vertical");
 
+        float sprintBoost = 1f;
+
+        if (isSprinting)
+        {
+            sprintBoost = 1.7f;
+        }
+
         Vector3 movementDirection =
-            (transform.forward * vertical + transform.right * horizontal).normalized * (speed * Time.deltaTime);
+            (transform.forward * vertical + transform.right * horizontal).normalized * (speed * sprintBoost * Time.deltaTime);
 
         transform.position += movementDirection;
     }
@@ -100,7 +90,19 @@ public class PlayerNetwork : NetworkBehaviour {
     {
         if (Input.GetMouseButtonDown(0))
         {
+            miAnimator.ResetTrigger("Shoot");
+            miAnimator.SetTrigger("Shoot");
             ShootRpc(playerCamera.transform.position, playerCamera.transform.forward, NetworkObjectId);
+        }
+
+        if (Input.GetKeyDown(KeyCode.LeftShift)) {
+            isSprinting = true;
+            miAnimator.SetBool("Running",true);
+        }
+        if(Input.GetKeyUp(KeyCode.LeftShift))
+        {
+            isSprinting = false;
+            miAnimator.SetBool("Running", false);
         }
     }
 
